@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_collisions
+    description: >
+      Staging model that reads from the Silver Delta table and normalizes column names
+      for the Gold layer. No transformations - just selection and renaming.
+
+    columns:
+      - name: collision_id
+        description: "Unique collision identifier from the NYC Open Data API."
+        tests:
+          - not_null
+          - unique
+
+      - name: crash_date
+        description: "Date of the crash."
+        tests:
+          - not_null
+
+      - name: crash_datetime
+        description: "Combined crash date + time as a timestamp."
+
+      - name: borough
+        description: "NYC borough, uppercased. Null for crashes outside the 5 boroughs."
+        tests:
+          - accepted_values:
+              values: ['BRONX', 'BROOKLYN', 'MANHATTAN', 'QUEENS', 'STATEN ISLAND']
+              quote: true
+              # allow nulls - crashes on highways or bridges sometimes have no borough
+              config:
+                where: "borough is not null"
+
+      - name: total_injuries
+        description: "Total number of injured persons across all categories."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: total_fatalities
+        description: "Total number of fatalities across all categories."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"

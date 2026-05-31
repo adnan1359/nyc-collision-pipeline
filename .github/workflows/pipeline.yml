@@ -1,0 +1,85 @@
+name: NYC Collisions Daily Pipeline
+
+on:
+  # Run every day at 6 AM UTC (1 AM EST).
+  # The NYC Open Data API usually has yesterday's crashes by early morning.
+  schedule:
+    - cron: '0 6 * * *'
+
+  # Also allow triggering manually from the GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      full_reload:
+        description: 'Pass --full-reload to re-pull the last year of data'
+        required: false
+        default: 'false'
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    # These are used by run_sql.py, fetch_collisions.py, and dbt.
+    # The warehouse ID is parsed from DATABRICKS_HTTP_PATH, so there's no
+    # separate cluster/warehouse-id secret to manage.
+    env:
+      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN:     ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+
+    steps:
+
+      # ── Setup ──────────────────────────────────────────────────────────────
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests pandas databricks-sdk==0.40.0 dbt-databricks==1.8.7 dbt-core==1.8.7
+
+      # ── Step 1: Setup — create schemas + the landing Volume ────────────────
+      # Must run before ingestion, because fetch_collisions.py uploads into the
+      # Volume created here. Idempotent (CREATE ... IF NOT EXISTS).
+
+      - name: Setup — create schemas and Volume
+        run: python databricks/run_sql.py databricks/sql/00_setup.sql
+
+      # ── Step 2: Ingestion — fetch from API and upload JSONL to the Volume ──
+
+      - name: Ingestion — fetch from API and upload to Volume
+        run: |
+          if [ "${{ github.event.inputs.full_reload }}" = "true" ]; then
+            python ingestion/fetch_collisions.py --full-reload
+          else
+            python ingestion/fetch_collisions.py
+          fi
+
+      # ── Step 3: Bronze — COPY INTO from Volume into the Delta table ───────
+
+      - name: Bronze — load Volume files into Delta table
+        run: python databricks/run_sql.py databricks/sql/01_bronze.sql
+
+      # ── Step 4: Silver — clean, type-cast, deduplicate ────────────────────
+
+      - name: Silver — transform Bronze into clean Silver table
+        run: python databricks/run_sql.py databricks/sql/02_silver.sql
+
+      # ── Step 5: dbt — build and test the Gold layer ───────────────────────
+
+      - name: dbt deps — install dbt_utils package
+        working-directory: dbt
+        run: dbt deps
+
+      - name: dbt run — build all Gold models
+        working-directory: dbt
+        run: dbt run
+
+      - name: dbt test — run all schema and data quality tests
+        working-directory: dbt
+        # --store-failures saves failed test rows as tables so you can query
+        # what broke instead of digging through logs
+        run: dbt test --store-failures

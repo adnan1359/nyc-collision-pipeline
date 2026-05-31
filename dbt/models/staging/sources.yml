@@ -1,0 +1,31 @@
+version: 2
+
+sources:
+  - name: silver
+    catalog: workspace
+    schema: silver
+    description: "Cleaned and typed data produced by the Silver PySpark notebook."
+
+    tables:
+      - name: collisions_clean
+        description: "One row per collision after deduplication, type casting, and null filtering."
+
+        columns:
+          - name: collision_id
+            description: "Unique collision identifier from the NYC Open Data API."
+          - name: crash_date
+            description: "Date of the crash."
+          - name: crash_datetime
+            description: "Combined crash date + time as a timestamp."
+          - name: borough
+            description: "NYC borough where the crash happened. Uppercased in Silver."
+          - name: zip_code
+            description: "Zip code of the crash location."
+          - name: latitude
+            description: "Latitude of crash location. Null when coordinates were 0,0 or missing."
+          - name: longitude
+            description: "Longitude of crash location."
+          - name: total_injuries
+            description: "Sum of all injured persons across all categories."
+          - name: total_fatalities
+            description: "Sum of all fatalities across all categories."

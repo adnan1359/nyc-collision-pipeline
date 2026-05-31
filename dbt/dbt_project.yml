@@ -1,0 +1,24 @@
+name: nyc_collisions
+version: '1.0.0'
+config-version: 2
+
+profile: nyc_collisions
+
+model-paths:  ["models"]
+seed-paths:   ["seeds"]
+macro-paths:  ["macros"]
+test-paths:   ["tests"]
+analysis-paths: ["analyses"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  nyc_collisions:
+    staging:
+      +materialized: view
+      +schema: staging
+
+    gold:
+      +materialized: table
+      +schema: gold

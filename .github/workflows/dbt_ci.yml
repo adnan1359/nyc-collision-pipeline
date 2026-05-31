@@ -1,0 +1,39 @@
+name: dbt CI
+
+# Run this check on every pull request that touches anything inside dbt/
+on:
+  pull_request:
+    paths:
+      - 'dbt/**'
+
+jobs:
+  dbt-check:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: pip install dbt-databricks==1.8.7 dbt-core==1.8.7
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+
+      # dbt compile just parses and compiles the SQL — it doesn't run anything
+      # against Databricks. Good way to catch typos and broken ref() calls on a PR
+      # without needing to touch real data.
+      - name: dbt compile — check all SQL compiles cleanly
+        working-directory: dbt
+        env:
+          DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN:     ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+        run: dbt compile

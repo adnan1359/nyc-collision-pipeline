@@ -1,0 +1,11 @@
+nyc_collisions:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      catalog: workspace
+      schema: gold
+      host: "{{ env_var('DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"   # SQL Warehouse HTTP path
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4

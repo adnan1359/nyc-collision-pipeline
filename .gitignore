@@ -1,0 +1,33 @@
+# Secrets
+.env
+*.env
+
+# Watermark state — runtime-generated, must not be committed (breaks CI reruns)
+ingestion/state/last_run_state.json
+ingestion/state/*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+dbt/profiles.yml          # contains secrets; use env vars or CI injection
+
+# Databricks Connect local config
+.databricks/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+CLAUDE.md

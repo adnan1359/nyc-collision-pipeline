@@ -1,0 +1,248 @@
+version: 2
+
+models:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # dim_date
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: dim_date
+    description: >
+      Date dimension generated from a spine of every day between 2022 and 2030.
+      Provides calendar attributes for slicing collision data by time.
+
+    columns:
+      - name: date_id
+        description: "Integer surrogate key in YYYYMMDD format (e.g. 20240115)."
+        tests:
+          - not_null
+          - unique
+
+      - name: full_date
+        description: "The actual calendar date."
+        tests:
+          - not_null
+          - unique
+
+      - name: year
+        description: "Calendar year."
+        tests:
+          - not_null
+
+      - name: month
+        description: "Month number (1–12)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1,2,3,4,5,6,7,8,9,10,11,12]
+
+      - name: day_of_week
+        description: "Day of week number. 1=Sunday, 7=Saturday (Spark convention)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1,2,3,4,5,6,7]
+
+      - name: is_weekend
+        description: "True if the date falls on a Saturday or Sunday."
+        tests:
+          - not_null
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # dim_location
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: dim_location
+    description: >
+      Location dimension. One row per unique borough + zip code combination
+      seen in the collision data. Latitude and longitude stay on the fact table
+      since they vary by individual crash.
+
+    columns:
+      - name: location_sk
+        description: "Surrogate key — MD5 hash of borough and zip_code."
+        tests:
+          - not_null
+          - unique
+
+      - name: borough
+        description: "NYC borough name, uppercased. Null for crashes with no borough recorded."
+        tests:
+          - accepted_values:
+              values: ['BRONX', 'BROOKLYN', 'MANHATTAN', 'QUEENS', 'STATEN ISLAND']
+              quote: true
+              config:
+                where: "borough is not null"
+
+      - name: borough_label
+        description: "Borough name with nulls replaced by 'Unknown'. Safe to use in reports."
+        tests:
+          - not_null
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # dim_vehicle
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: dim_vehicle
+    description: >
+      Vehicle dimension. One row per unique combination of vehicle types
+      involved in a crash. The API supports up to 5 vehicles per collision.
+
+    columns:
+      - name: vehicle_sk
+        description: "Surrogate key — MD5 hash of all 5 vehicle type slots."
+        tests:
+          - not_null
+          - unique
+
+      - name: primary_vehicle_type
+        description: "First vehicle type slot. 'Unknown' when vehicle_type_1 is null."
+        tests:
+          - not_null
+
+      - name: vehicles_involved_count
+        description: "How many vehicle type slots are filled in (0–5)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0,1,2,3,4,5]
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # fact_collisions
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: fact_collisions
+    description: >
+      Fact table. Grain: one row per collision.
+      Contains all injury and fatality measures, plus foreign keys to
+      dim_date, dim_location, and dim_vehicle.
+
+    columns:
+      - name: collision_sk
+        description: "Surrogate key for this fact row."
+        tests:
+          - not_null
+          - unique
+
+      - name: collision_id
+        description: "Natural key from the NYC Open Data API."
+        tests:
+          - not_null
+          - unique
+
+      - name: date_sk
+        description: "Foreign key to dim_date.date_id."
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_id
+              config:
+                # some crashes have a missing or unparseable date - allow nulls
+                where: "date_sk is not null"
+
+      - name: location_sk
+        description: "Foreign key to dim_location.location_sk."
+        tests:
+          - relationships:
+              to: ref('dim_location')
+              field: location_sk
+
+      - name: vehicle_sk
+        description: "Foreign key to dim_vehicle.vehicle_sk."
+        tests:
+          - relationships:
+              to: ref('dim_vehicle')
+              field: vehicle_sk
+
+      - name: crash_date
+        description: "Date of the crash."
+        tests:
+          - not_null
+
+      - name: total_injuries
+        description: "Total injured persons across all categories."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: total_fatalities
+        description: "Total fatalities across all categories."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: has_injuries
+        description: "True when at least one person was injured."
+        tests:
+          - not_null
+
+      - name: has_fatalities
+        description: "True when at least one person was killed."
+        tests:
+          - not_null
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # monthly_collision_metrics
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: monthly_collision_metrics
+    description: >
+      Pre-aggregated monthly metrics. One row per year + month.
+      Used for time series charts in Power BI.
+
+    columns:
+      - name: year
+        description: "Calendar year."
+        tests:
+          - not_null
+
+      - name: month
+        description: "Month number (1–12)."
+        tests:
+          - not_null
+
+      - name: total_collisions
+        description: "Total number of collision records for the month."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+
+      - name: total_injuries
+        description: "Sum of all injuries for the month."
+        tests:
+          - not_null
+
+      - name: total_fatalities
+        description: "Sum of all fatalities for the month."
+        tests:
+          - not_null
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # borough_collision_metrics
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: borough_collision_metrics
+    description: >
+      All-time collision metrics rolled up by borough.
+      Used for bar charts and borough comparison in Power BI.
+
+    columns:
+      - name: borough
+        description: "Borough name. 'Unknown' for crashes with no borough recorded."
+        tests:
+          - not_null
+          - unique
+
+      - name: total_collisions
+        description: "Total collisions ever recorded for this borough."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+
+      - name: injury_rate_per_100
+        description: "Number of injuries per 100 collisions."
+        tests:
+          - not_null
+
+      - name: fatality_rate_per_100
+        description: "Number of fatalities per 100 collisions."
+        tests:
+          - not_null
