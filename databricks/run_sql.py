@@ -16,6 +16,12 @@ import os
 import sys
 import time
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
 

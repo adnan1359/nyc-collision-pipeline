@@ -18,6 +18,12 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 import requests
 from databricks.sdk import WorkspaceClient
 
